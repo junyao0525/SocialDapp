@@ -1,103 +1,655 @@
-import Image from "next/image";
+"use client"
+import SocialDApp from "@/contracts/socialMedia.json";
+import getEthers from "@/utils/getEther";
+import { BrowserProvider, Contract, JsonRpcSigner } from "ethers";
+import { useEffect, useState } from "react";
+import "./App.css";
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+function App() {
+  // State management
+  const [provider, setProvider] = useState<BrowserProvider | null>(null);
+  const [signer, setSigner] = useState<JsonRpcSigner | null>(null);
+  const [contract, setContract] = useState<Contract | null>(null);
+  const [account, setAccount] = useState("");
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [userInfo, setUserInfo] = useState({});
+  const [posts, setPosts] = useState([]);
+  const [stats, setStats] = useState({ usersCount: 0, postsCount: 0 });
+  
+  // Form states
+  const [username, setUsername] = useState("");
+  const [newPost, setNewPost] = useState("");
+  const [editingPost, setEditingPost] = useState(null);
+  const [editContent, setEditContent] = useState("");
+  
+  // Loading states
+  const [loading, setLoading] = useState(false);
+  const [postsLoading, setPostsLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Contract address - Replace with your deployed contract address
+  const CONTRACT_ADDRESS = "0x9b4D2c892A73C31bac871d935Cf4c9d0295432F9";
+
+  // Initialize contract and load data
+  useEffect(() => {
+    const init = async () => {
+      try {
+        setLoading(true);
+        console.log("Initializing contract...");
+        
+        
+        const provider = await getEthers();
+        const signer = await provider.getSigner();
+        const signerAddress = await signer.getAddress();
+
+        console.log("Connected account:", signerAddress);
+
+        console.log(provider)
+
+        const abi = SocialDApp.abi;
+        const contractInstance = new Contract(CONTRACT_ADDRESS, abi, signer);
+
+        setProvider(provider);
+        setSigner(signer);
+        setContract(contractInstance);
+        setAccount(signerAddress);
+
+        // Check if user is registered
+        console.log("Checking if user is registered...");
+        const registered = await contractInstance.isUserRegistered(signerAddress);
+        console.log("User registered:", registered);
+        setIsRegistered(registered);
+
+        if (registered) {
+          console.log("Loading user info...");
+          const userInfo = await contractInstance.getUserInfo(signerAddress);
+          console.log("User info:", userInfo);
+          setUserInfo({
+            username: userInfo.username,
+            postCount: userInfo.postCount.toString()
+          });
+        }
+
+        // Load posts and stats
+        await loadPosts(contractInstance);
+        await loadStats(contractInstance);
+
+      } catch (err: unknown) {
+        console.error("Error during contract init:", err);
+        if (err instanceof Error) {
+          alert(`Failed to connect to the contract: ${err.message}`);
+        } else {
+          alert('Failed to connect to the contract: Unknown error occurred');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+
+    // Add MetaMask event listeners
+    if (typeof window.ethereum !== 'undefined') {
+      const handleAccountsChanged = async (accounts: string[]) => {
+        console.log("Account changed:", accounts);
+        if (accounts.length === 0) {
+          // User disconnected their wallet
+          setAccount("");
+          setProvider(null);
+          setSigner(null);
+          setContract(null);
+          setIsRegistered(false);
+          setUserInfo({});
+          setPosts([]);
+          setStats({ usersCount: 0, postsCount: 0 });
+        } else {
+          // User switched accounts
+          await reconnectWallet();
+        }
+      };
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', () => {
+        window.location.reload();
+      });
+
+      // Cleanup listeners
+      return () => {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', () => {
+          window.location.reload();
+        });
+      };
+    }
+  }, []);
+
+  // Load all posts
+  const loadPosts = async (contractInstance = contract) => {
+    if (!contractInstance) {
+      console.log("Contract not available for loading posts");
+      return;
+    }
+    
+    try {
+      setPostsLoading(true);
+      console.log("Loading all posts...");
+      
+      const result = await contractInstance.getAllPosts();
+      console.log("Raw posts result:", result);
+      
+      if (!result || result.length < 4) {
+        console.error("Invalid posts result structure:", result);
+        setPosts([]);
+        return;
+      }
+      
+      const formattedPosts = result[0].map((id, index) => ({
+        id: id.toString(),
+        author: result[1][index],
+        content: result[2][index],
+        timestamp: new Date(Number(result[3][index]) * 1000).toLocaleString(),
+        isOwner: result[1][index].toLowerCase() === account.toLowerCase()
+      }));
+      
+      console.log("Formatted posts:", formattedPosts);
+      setPosts(formattedPosts);
+    } catch (err: unknown) {
+      console.error("Error loading posts:", err);
+      if (err instanceof Error) {
+        alert(`Failed to load posts: ${err.message}`);
+      } else {
+        alert('Failed to load posts: Unknown error occurred');
+      }
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  // Load platform statistics
+  const loadStats = async (contractInstance = contract) => {
+    if (!contractInstance) {
+      console.log("Contract not available for loading stats");
+      return;
+    }
+    
+    try {
+      console.log("Loading platform stats...");
+      const platformStats = await contractInstance.getPlatformStats();
+      console.log("Raw platform stats:", platformStats);
+      
+      if (!platformStats || platformStats.length < 2) {
+        console.error("Invalid stats result structure:", platformStats);
+        return;
+      }
+      
+      const newStats = {
+        usersCount: platformStats[0].toString(),
+        postsCount: platformStats[1].toString()
+      };
+      
+      console.log("New stats:", newStats);
+      setStats(newStats);
+    } catch (err: unknown) {
+      console.error("Error loading stats:", err);
+      if (err instanceof Error) {
+        alert(`Failed to load stats: ${err.message}`);
+      } else {
+        alert('Failed to load stats: Unknown error occurred');
+      }
+    }
+  };
+
+  // Register user
+  const registerUser = async () => {
+    if (!contract || !signer) {
+      alert("Contract or signer not ready.");
+      return;
+    }
+    
+    if (!username.trim()) {
+      alert("Username cannot be empty.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log("Registering user:", username);
+
+      // Estimate gas first
+      const estimatedGas = await contract.registerUser.estimateGas(username);
+      console.log("Estimated gas:", estimatedGas.toString());
+
+      const tx = await contract.registerUser(username, { 
+        gasLimit: Math.floor(Number(estimatedGas) * 1.2) // Add 20% buffer
+      });
+      
+      console.log("Transaction sent:", tx.hash);
+      const receipt = await tx.wait();
+      console.log("Transaction confirmed:", receipt);
+
+      // Update states
+      setIsRegistered(true);
+      setUserInfo({ username, postCount: "0" });
+      setUsername(""); // Clear form
+      
+      // Reload data
+      await loadStats();
+      
+      alert("User registered successfully!");
+    } catch (err: unknown) {
+      console.error("Error registering user:", err);
+      if (err instanceof Error) {
+        alert(`Failed to register user: ${err.message}`);
+      } else {
+        alert('Failed to register user: Unknown error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create new post
+  const createPost = async () => {
+    if (!contract || !signer) {
+      alert("Contract or signer not ready.");
+      return;
+    }
+    
+    if (!newPost.trim()) {
+      alert("Post content cannot be empty.");
+      return;
+    }
+    
+    if (newPost.length > 1000) {
+      alert("Post content too long (max 1000 characters).");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log("Creating post:", newPost);
+
+      // Estimate gas first
+      const estimatedGas = await contract.createPost.estimateGas(newPost);
+      console.log("Estimated gas:", estimatedGas.toString());
+
+      const tx = await contract.createPost(newPost, { 
+        gasLimit: Math.floor(Number(estimatedGas) * 1.2) // Add 20% buffer
+      });
+      
+      console.log("Transaction sent:", tx.hash);
+      const receipt = await tx.wait();
+      console.log("Transaction confirmed:", receipt);
+
+      // Clear form and reload data
+      setNewPost("");
+      await Promise.all([
+        loadPosts(),
+        loadStats()
+      ]);
+      
+      // Update user info post count
+      if (isRegistered) {
+        const updatedUserInfo = await contract.getUserInfo(account);
+        setUserInfo({
+          username: updatedUserInfo.username,
+          postCount: updatedUserInfo.postCount.toString()
+        });
+      }
+      
+      alert("Post created successfully!");
+    } catch (err: unknown) {
+      console.error("Error creating post:", err);
+      if (err instanceof Error) {
+        alert(`Failed to create post: ${err.message}`);
+      } else {
+        alert('Failed to create post: Unknown error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Edit post
+  const editPost = async (postId) => {
+    if (!contract) {
+      alert("Contract not ready.");
+      return;
+    }
+    
+    if (!editContent.trim()) {
+      alert("Post content cannot be empty.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log("Editing post:", postId, editContent);
+
+      // Estimate gas first
+      const estimatedGas = await contract.editPost.estimateGas(postId, editContent);
+      console.log("Estimated gas:", estimatedGas.toString());
+
+      const tx = await contract.editPost(postId, editContent, { 
+        gasLimit: Math.floor(Number(estimatedGas) * 1.2) // Add 20% buffer
+      });
+      
+      console.log("Transaction sent:", tx.hash);
+      const receipt = await tx.wait();
+      console.log("Transaction confirmed:", receipt);
+
+      // Clear editing state and reload posts
+      setEditingPost(null);
+      setEditContent("");
+      await loadPosts();
+      
+      alert("Post updated successfully!");
+    } catch (err: unknown) {
+      console.error("Error editing post:", err);
+      if (err instanceof Error) {
+        alert(`Failed to edit post: ${err.message}`);
+      } else {
+        alert('Failed to edit post: Unknown error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Start editing a post
+  const startEdit = (post) => {
+    setEditingPost(post.id);
+    setEditContent(post.content);
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingPost(null);
+    setEditContent("");
+  };
+
+  // Format address for display
+  const formatAddress = (address) => {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  // Reconnect wallet with better error handling
+  const reconnectWallet = async () => {
+    try {
+      setLoading(true);
+      console.log("Reconnecting wallet...");
+      
+      if (typeof window.ethereum === "undefined") {
+        alert("MetaMask is not installed.");
+        return;
+      }
+
+      // Request account access
+      const accounts = await window.ethereum.request({ 
+        method: "eth_requestAccounts",
+        params: [] 
+      });
+
+      if (accounts.length === 0) {
+        alert("No account found. Please connect to MetaMask.");
+        return;
+      }
+
+      const newAddress = accounts[0];
+      console.log("New account address:", newAddress);
+
+      const provider = await getEthers();
+      const signer = await provider.getSigner();
+      const currentAddress = await signer.getAddress();
+      
+      if (currentAddress.toLowerCase() !== newAddress.toLowerCase()) {
+        console.log("Address mismatch, reloading page...");
+        window.location.reload();
+        return;
+      }
+
+      console.log("Reconnected to account:", currentAddress);
+      
+      const abi = SocialDApp.abi;
+      const contractInstance = new Contract(CONTRACT_ADDRESS, abi, signer);
+
+      setProvider(provider);
+      setSigner(signer);
+      setContract(contractInstance);
+      setAccount(currentAddress);
+
+      // Check if user is registered
+      const registered = await contractInstance.isUserRegistered(currentAddress);
+      setIsRegistered(registered);
+
+      if (registered) {
+        const userInfo = await contractInstance.getUserInfo(currentAddress);
+        setUserInfo({
+          username: userInfo.username,
+          postCount: userInfo.postCount.toString()
+        });
+      } else {
+        setUserInfo({});
+      }
+
+      await Promise.all([
+        loadPosts(contractInstance),
+        loadStats(contractInstance)
+      ]);
+      
+      alert("Wallet reconnected successfully.");
+    } catch (err: unknown) {
+      console.error("Error reconnecting wallet:", err);
+      if (err instanceof Error) {
+        alert(`Failed to reconnect wallet: ${err.message}`);
+      } else {
+        alert('Failed to reconnect wallet: Unknown error occurred');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !contract) {
+    return (
+      <div className="app-container">
+        <div className="container">
+          <div className="loading-container">
+            <div className="modern-spinner"></div>
+            <h2 style={{ color: 'white', marginTop: '2rem', fontSize: '1.5rem' }}>
+              🚀 Connecting to SocialChain...
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.8)', marginTop: '1rem' }}>
+              Preparing your decentralized social experience
+            </p>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-container">
+      <div className="container">
+        {/* Header */}
+        <div className="app-header fade-in-up">
+          <h1 className="app-title">SocialChain</h1>
+          <p className="app-subtitle">Decentralized Social Media on Blockchain</p>
+          <div className="stats-container">
+            <div className="stat-badge">
+              🙋‍♀️ {stats.usersCount} Users
+            </div>
+            <div className="stat-badge">
+              📝 {stats.postsCount} Posts
+            </div>
+          </div>
+          <div className="connected-address">
+            🔗 {formatAddress(account)}
+          </div>
+          <button
+            className="btn-modern btn-outline-modern btn-small"
+            onClick={reconnectWallet}
+            style={{ marginTop: '1rem' }}
+            disabled={loading}
+          >
+            {loading ? "🔄 Connecting..." : "🔄 Reconnect Wallet"}
+          </button>
+        </div>
+
+        {/* User Registration */}
+        {!isRegistered ? (
+          <div className="modern-card fade-in-up">
+            <div className="card-header-modern">
+              <h3>🚀 Join the Community</h3>
+            </div>
+            <div className="card-body-modern">
+              <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+                Create your username to start sharing your thoughts on the blockchain!
+              </p>
+              <input
+                type="text"
+                className="modern-input"
+                placeholder="Choose your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+              />
+              <button 
+                className="btn-modern btn-primary-modern" 
+                onClick={registerUser}
+                disabled={loading || !contract || !username.trim()}
+                style={{ width: '100%' }}
+              >
+                {loading ? "🔄 Registering..." : "✨ Join Now"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* User Info */}
+            <div className="modern-card welcome-section fade-in-up">
+              <h5>🎉 Welcome back, {userInfo.username}!</h5>
+              <p>You've shared your thoughts {userInfo.postCount} times</p>
+            </div>
+
+            {/* Create Post */}
+            <div className="modern-card fade-in-up">
+              <div className="card-header-modern">
+                <h3>💭 Share Your Thoughts</h3>
+              </div>
+              <div className="card-body-modern">
+                <textarea
+                  className="modern-textarea"
+                  placeholder="What's inspiring you today? Share it with the world..."
+                  value={newPost}
+                  onChange={(e) => setNewPost(e.target.value)}
+                  disabled={loading}
+                />
+                <div className={`char-counter ${newPost.length > 800 ? 'warning' : ''}`}>
+                  {newPost.length}/1000 characters
+                </div>
+                <button 
+                  className="btn-modern btn-success-modern" 
+                  onClick={createPost}
+                  disabled={loading || !contract || !newPost.trim()}
+                  style={{ width: '100%', marginTop: '1rem' }}
+                >
+                  {loading ? "📤 Publishing..." : "🚀 Share Post"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Posts Feed */}
+        <div className="modern-card fade-in-up">
+          <div className="card-header-modern" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3>🌍 Community Feed</h3>
+            <button 
+              className="btn-modern btn-outline-modern btn-small"
+              onClick={() => loadPosts()}
+              disabled={postsLoading || loading}
+            >
+              {postsLoading ? "🔄" : "🔄 Refresh"}
+            </button>
+          </div>
+          <div className="card-body-modern">
+            {postsLoading ? (
+              <div className="loading-container">
+                <div className="modern-spinner"></div>
+                <p style={{ marginTop: '1rem', color: '#666' }}>Loading amazing posts...</p>
+              </div>
+            ) : posts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📝</div>
+                <p>No posts yet. Be the pioneer and share the first post!</p>
+              </div>
+            ) : (
+              <div>
+                {posts.map((post, index) => (
+                  <div key={post.id} className="post-card" style={{ animationDelay: `${index * 0.1}s` }}>
+                    <div className="post-header">
+                      <div className="post-author">
+                        <div className="author-avatar">
+                          {post.isOwner ? "👤" : post.author.slice(2, 4).toUpperCase()}
+                        </div>
+                        <div className="author-info">
+                          <h6>
+                            {post.isOwner ? "You" : formatAddress(post.author)}
+                            {post.isOwner && " 🔥"}
+                          </h6>
+                          <small>{post.timestamp}</small>
+                        </div>
+                      </div>
+                      {post.isOwner && (
+                        <button
+                          className="btn-modern btn-outline-modern btn-small"
+                          onClick={() => startEdit(post)}
+                          disabled={loading}
+                        >
+                          ✏️ Edit
+                        </button>
+                      )}
+                    </div>
+                    <div className="post-content">
+                      {editingPost === post.id ? (
+                        <div>
+                          <textarea
+                            className="modern-textarea"
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            disabled={loading}
+                            style={{ marginBottom: '1rem' }}
+                          />
+                          <div className="edit-actions">
+                            <button
+                              className="btn-modern btn-success-modern btn-small"
+                              onClick={() => editPost(post.id)}
+                              disabled={loading || !editContent.trim()}
+                            >
+                              {loading ? "💾 Saving..." : "💾 Save Changes"}
+                            </button>
+                            <button
+                              className="btn-modern btn-outline-modern btn-small"
+                              onClick={cancelEdit}
+                              disabled={loading}
+                            >
+                              ❌ Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        post.content
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
+export default App;
