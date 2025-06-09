@@ -9,7 +9,9 @@ interface SendPostProps {
 
 function SendPost({ onPostCreated }: SendPostProps) {
   const [content, setContent] = useState("")
-  const { createPost, loading, account } = useWeb3()
+  const { createPost, loading } = useWeb3()
+
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,13 +27,13 @@ function SendPost({ onPostCreated }: SendPostProps) {
     }
   }
 
-  if (!account) {
-    return (
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6 w-full max-w-2xl">
-        <p className="text-center text-gray-600">Please connect your wallet to create posts</p>
-      </div>
-    )
-  }
+  // if (!account) {
+  //   return (
+  //     <div className="bg-white rounded-lg shadow-md p-6 mb-6 w-full max-w-2xl">
+  //       <p className="text-center text-gray-600">Please connect your wallet to create posts</p>
+  //     </div>
+  //   )
+  // }
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6 w-full max-w-2xl">

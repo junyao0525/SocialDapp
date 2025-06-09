@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8;
+pragma solidity ^0.8.0;
 
 contract SocialDApp {
     struct Post {
@@ -8,6 +8,7 @@ contract SocialDApp {
         string content;
         uint256 timestamp;
         bool exists;
+        uint256 totalTipping;
     }
     
     struct User {
@@ -15,10 +16,13 @@ contract SocialDApp {
         string username;
         bool isRegistered;
         uint256[] userPosts;
+        uint256 totalTipping;
+        uint256 withdrawnTipping;
     }
     
     mapping(address => User) public users;
     mapping(uint256 => Post) public posts;
+    mapping(uint256 => mapping(address => uint256)) public postTipping; // Separated from Post struct
     mapping(address => bool) public registeredUsers;
     
     uint256 public totalPosts;
@@ -27,6 +31,8 @@ contract SocialDApp {
     event UserRegistered(address indexed user, string username);
     event PostCreated(uint256 indexed postId, address indexed author, string content);
     event PostEdited(uint256 indexed postId, address indexed author, string newContent);
+    event TippingGiven(uint256 indexed postId, address indexed giver, address indexed receiver, uint256 amount);
+    event TippingWithdrawn(address indexed user, uint256 amount);
     
     modifier onlyRegistered() {
         require(registeredUsers[msg.sender], "User not registered");
@@ -38,6 +44,59 @@ contract SocialDApp {
         require(posts[_postId].author == msg.sender, "Not the author of this post");
         _;
     }
+
+    // Give Tipping to a post
+    function giveTipping(uint256 _postId) external payable onlyRegistered {
+        require(msg.value > 0, "Tipping amount must be greater than 0");
+        require(posts[_postId].exists, "Post does not exist");
+        require(posts[_postId].author != msg.sender, "Cannot Tipping your own post");
+
+        Post storage post = posts[_postId];
+        post.totalTipping += msg.value;
+        postTipping[_postId][msg.sender] += msg.value;
+        
+        User storage author = users[post.author];
+        author.totalTipping += msg.value;
+
+        emit TippingGiven(_postId, msg.sender, post.author, msg.value);
+    }
+
+    // Get post Tipping
+    function getPostTipping(uint256 _postId) external view returns (
+        uint256 totalTipping,
+        uint256 userTipping
+    ) {
+        require(posts[_postId].exists, "Post does not exist");
+        Post storage post = posts[_postId];
+        return (post.totalTipping, postTipping[_postId][msg.sender]);
+    }
+
+    // Get user Tipping
+    function getUserTipping(address _user) external view returns (
+        uint256 totalTipping,
+        uint256 withdrawnTipping,
+        uint256 availableTipping
+    ) {
+        User storage user = users[_user];
+        return (
+            user.totalTipping,
+            user.withdrawnTipping,
+            user.totalTipping - user.withdrawnTipping
+        );
+    }
+
+    // Withdraw Tipping
+    function withdrawTipping() external onlyRegistered {
+        User storage user = users[msg.sender];
+        uint256 availableTipping = user.totalTipping - user.withdrawnTipping;
+        require(availableTipping > 0, "No Tipping to withdraw");
+
+        user.withdrawnTipping = user.totalTipping;
+        (bool success, ) = payable(msg.sender).call{value: availableTipping}("");
+        require(success, "Transfer failed");
+
+        emit TippingWithdrawn(msg.sender, availableTipping);
+    }
     
     // Register user (called after MetaMask connection)
     function registerUser(string memory _username) external {
@@ -48,7 +107,9 @@ contract SocialDApp {
             userAddress: msg.sender,
             username: _username,
             isRegistered: true,
-            userPosts: new uint256[](0)
+            userPosts: new uint256[](0),
+            totalTipping: 0,
+            withdrawnTipping: 0
         });
         
         registeredUsers[msg.sender] = true;
@@ -69,7 +130,8 @@ contract SocialDApp {
             author: msg.sender,
             content: _content,
             timestamp: block.timestamp,
-            exists: true
+            exists: true,
+            totalTipping: 0
         });
         
         users[msg.sender].userPosts.push(totalPosts);
@@ -92,14 +154,18 @@ contract SocialDApp {
         address userAddress,
         string memory username,
         bool isRegistered,
-        uint256 postCount
+        uint256 postCount,
+        uint256 totalTipping,
+        uint256 withdrawnTipping
     ) {
         User memory user = users[_user];
         return (
             user.userAddress,
             user.username,
             user.isRegistered,
-            user.userPosts.length
+            user.userPosts.length,
+            user.totalTipping,
+            user.withdrawnTipping
         );
     }
     
@@ -113,20 +179,26 @@ contract SocialDApp {
         uint256 id,
         address author,
         string memory content,
-        uint256 timestamp
+        uint256 timestamp,
+        uint256 totalTipping
     ) {
         require(posts[_postId].exists, "Post does not exist");
-        Post memory post = posts[_postId];
-        return (post.id, post.author, post.content, post.timestamp);
+        Post storage post = posts[_postId];
+        return (post.id, post.author, post.content, post.timestamp, post.totalTipping);
     }
     
-    // Get all posts (for feed)
+    // Get all posts (for feed) - Fixed to handle edge cases
     function getAllPosts() external view returns (
         uint256[] memory ids,
         address[] memory authors,
         string[] memory contents,
-        uint256[] memory timestamps
+        uint256[] memory timestamps,
+        uint256[] memory totalTippingArray
     ) {
+        if (totalPosts == 0) {
+            return (new uint256[](0), new address[](0), new string[](0), new uint256[](0), new uint256[](0));
+        }
+        
         uint256 validPostCount = 0;
         
         // Count valid posts
@@ -136,22 +208,27 @@ contract SocialDApp {
             }
         }
         
+        if (validPostCount == 0) {
+            return (new uint256[](0), new address[](0), new string[](0), new uint256[](0), new uint256[](0));
+        }
+        
         // Initialize arrays
         ids = new uint256[](validPostCount);
         authors = new address[](validPostCount);
         contents = new string[](validPostCount);
         timestamps = new uint256[](validPostCount);
+        totalTippingArray = new uint256[](validPostCount);
         
         // Fill arrays with valid posts (reverse order for newest first)
         uint256 index = 0;
-        for (uint256 i = totalPosts; i >= 1; i--) {
+        for (uint256 i = totalPosts; i >= 1 && index < validPostCount; i--) {
             if (posts[i].exists) {
                 ids[index] = posts[i].id;
                 authors[index] = posts[i].author;
                 contents[index] = posts[i].content;
                 timestamps[index] = posts[i].timestamp;
+                totalTippingArray[index] = posts[i].totalTipping;
                 index++;
-                if (index >= validPostCount) break;
             }
         }
     }
@@ -163,8 +240,9 @@ contract SocialDApp {
     
     // Get platform stats
     function getPlatformStats() external view returns (uint256 usersCount, uint256 postsCount) {
-        usersCount = totalUsers; // assuming you track user addresses
-        postsCount = totalPosts;      // assuming you track posts globally
+        return (totalUsers, totalPosts);
     }
 
+    // Function to receive ETH
+    receive() external payable {}
 }

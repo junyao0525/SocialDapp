@@ -1,34 +1,37 @@
 "use client"
 
 import { useWeb3 } from "@/hooks/useWeb3"
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { TipPost } from "./TipPost"
 
 interface PostProps {
   id: string
   author: string
   content: string
   timestamp: string
-  isOwner?: boolean
-  onPostEdited?: () => void
+  isOwner: boolean
+  onPostEdited: () => void
 }
 
-function Post({ id, author, content, timestamp, isOwner = false, onPostEdited }: PostProps) {
+export default function Post({ id, author, content, timestamp, isOwner, onPostEdited }: PostProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
-  const { editPost, loading } = useWeb3()
-
-  useEffect(() => {console.log(loading)}, [loading])
+  const [loading, setLoading] = useState(false)
+  const { editPost } = useWeb3()
 
   const handleEdit = async () => {
     if (!editContent.trim()) return
 
     try {
-      await editPost(id, editContent)
+      setLoading(true)
+      const tx = await editPost(id, editContent)
+      await tx.wait()
       setIsEditing(false)
-      onPostEdited?.()
+      onPostEdited()
     } catch (error) {
       console.error("Error editing post:", error)
-      alert(error instanceof Error ? error.message : "Failed to edit post")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -88,10 +91,17 @@ function Post({ id, author, content, timestamp, isOwner = false, onPostEdited }:
           </div>
         </div>
       ) : (
-        <p className="text-gray-700">{content}</p>
+        <>
+          <p className="text-gray-700 mb-4">{content}</p>
+          {isOwner ? "" :
+            <>
+              <hr className="border-t border-gray-300 my-4" />
+              <div className="mt-4">
+                <TipPost postId={id} onTipSuccess={onPostEdited} />
+              </div>
+            </>}
+        </>
       )}
     </div>
   )
-}
-
-export default Post 
+} 

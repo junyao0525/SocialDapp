@@ -35,10 +35,17 @@ function Header() {
         </Link>
         <div className="flex items-center space-x-4">
           {account ? (
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/withdraw-tips"
+                className="text-sm text-gray-200 hover:text-white transition-colors"
+              >
+                Withdraw
+              </Link>
               <span className="text-sm bg-blue-700 px-3 py-1 rounded-full">
                 {isRegistered ? `${username} (${formatAddress(account)})` : formatAddress(account)}
               </span>
+             
               {!isRegistered && (
                 <Link
                   href="/login"
@@ -47,6 +54,7 @@ function Header() {
                   Complete Registration
                 </Link>
               )}
+             
             </div>
           ) : (
             <Link

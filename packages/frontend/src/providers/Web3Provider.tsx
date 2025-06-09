@@ -20,7 +20,6 @@ interface Web3ContextType {
   }>
   createPost: (content: string) => Promise<ethers.ContractTransactionResponse>
   editPost: (postId: string, content: string) => Promise<ethers.ContractTransactionResponse>
-  deletePost: (postId: string) => Promise<ethers.ContractTransactionResponse>
   getAllPosts: () => Promise<[ethers.BigNumberish[], string[], string[], ethers.BigNumberish[]]>
 }
 

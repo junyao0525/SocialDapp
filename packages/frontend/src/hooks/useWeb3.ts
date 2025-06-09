@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 
-const CONTRACT_ADDRESS = "0xe8fAEE27f64Dde6CBc0c77A2Dcda0E61D9c98C63";
+const CONTRACT_ADDRESS = "0xeB6f257e1a52ee3f1987b4f12ac9E43FCFC800bf";
 
 interface Web3HookReturn {
   provider: ethers.BrowserProvider | null;
@@ -19,6 +19,11 @@ interface Web3HookReturn {
   getAllPosts: () => Promise<[ethers.BigNumberish[], string[], string[], ethers.BigNumberish[]]>;
   registerUser: (name: string) => Promise<ethers.ContractTransactionResponse>;
   isUsernameAvailable: (username: string) => Promise<boolean>;
+  tipPost: (postId: string, amount: string) => Promise<ethers.ContractTransactionResponse>;
+  withdrawTips: () => Promise<ethers.ContractTransactionResponse>;
+  getPostTips: (postId: string) => Promise<bigint>;
+  getUserTips: () => Promise<bigint>;
+  getAvailableTips: () => Promise<{ total: string; withdrawn: string; available: string }>;
 }
 
 export function useWeb3(): Web3HookReturn {
@@ -78,6 +83,7 @@ export function useWeb3(): Web3HookReturn {
 
   const createPost = async (content: string) => {
     if (!contract) throw new Error("Contract not initialized");
+    if (!account) throw new Error("Pls Register as user first");
 
     try {
       setLoading(true);
@@ -142,7 +148,7 @@ export function useWeb3(): Web3HookReturn {
     if (!contract) throw new Error("Contract not initialized");
 
     try {
-      const [usersCount] = await contract.getPlatformStats();
+      // const [usersCount] = await contract.getPlatformStats();
       const allPosts = await contract.getAllPosts();
       const authors = allPosts[1]; // Get all author addresses
 
@@ -163,6 +169,119 @@ export function useWeb3(): Web3HookReturn {
     }
   };
 
+  const tipPost = async (postId: string, amount: string) => {
+    if (!contract) throw new Error("Contract not initialized");
+
+    try {
+      setLoading(true);
+      const amountInWei = ethers.parseEther(amount);
+      const tx = await contract.giveTipping(postId, { value: amountInWei });
+      await tx.wait();
+      return tx;
+    } catch (error) {
+      console.error("Error tipping post:", error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAvailableTips = async () => {
+    if (!contract) throw new Error("Contract not initialized");
+    if (!account) throw new Error("No account connected");
+    if (!isRegistered) throw new Error("Please register a username first");
+
+    try {
+      const [totalTipping, withdrawnTipping, availableTipping] = await contract.getUserTipping(account);
+      return {
+        total: ethers.formatEther(totalTipping),
+        withdrawn: ethers.formatEther(withdrawnTipping),
+        available: ethers.formatEther(availableTipping)
+      };
+    } catch (error) {
+      console.error("Error getting available tips:", error);
+      throw error;
+    }
+  };
+
+  const withdrawTips = async () => {
+    if (!contract) throw new Error("Contract not initialized");
+    if (!account) throw new Error("No account connected");
+    if (!isRegistered) throw new Error("Please register a username first");
+
+    try {
+      setLoading(true);
+      // Check available tips before withdrawing
+      const [totalTipping, withdrawnTipping, availableTipping] = await contract.getUserTipping(account);
+      console.log("Tips info:", {
+        total: ethers.formatEther(totalTipping),
+        withdrawn: ethers.formatEther(withdrawnTipping),
+        available: ethers.formatEther(availableTipping)
+      });
+
+      if (availableTipping.toString() === "0") {
+        throw new Error("No tips available to withdraw");
+      }
+
+      const tx = await contract.withdrawTipping();
+      console.log("Withdrawal transaction:", tx.hash);
+      await tx.wait();
+      return tx;
+    } catch (error) {
+      console.error("Error withdrawing tips:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to withdraw tips: ${error.message}`);
+      }
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPostTips = async (postId: string): Promise<bigint> => {
+    if (!contract) {
+      console.error("Contract not initialized. Please connect your wallet first.");
+      throw new Error("Please connect your wallet first");
+    }
+    if (!account) {
+      console.error("No account connected");
+      throw new Error("Please connect your wallet first");
+    }
+
+    try {
+      console.log("Getting tips for post:", postId);
+      console.log("Contract address:", contract.target);
+      console.log("Account:", account);
+      
+      const [totalTipping] = await contract.getPostTipping(postId);
+      console.log("Post tips:", totalTipping.toString());
+      return totalTipping;
+    } catch (error) {
+      console.error("Error getting post tips:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to get post tips: ${error.message}`);
+      }
+      throw error;
+    }
+  };
+
+  const getUserTips = async (): Promise<bigint> => {
+    if (!contract) throw new Error("Contract not initialized");
+    if (!account) throw new Error("No account connected");
+  
+    try {
+      console.log("Contract:", contract.target); // Log contract address
+      console.log("Account:", account); // Log current account
+      console.log("Network:", await provider?.getNetwork()); // Log network
+      
+      const [totalTipping] = await contract.getUserTipping(account);
+      return totalTipping;
+    } catch (error) {
+      console.error("Error getting user tips:", error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     // Check for existing wallet connection
     const checkConnection = async () => {
@@ -171,7 +290,23 @@ export function useWeb3(): Web3HookReturn {
         Cookies.get("wallet_connected")
       ) {
         try {
-          await connectWallet();
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const address = await signer.getAddress();
+          const contract = new ethers.Contract(
+            CONTRACT_ADDRESS,
+            SocialDApp.abi,
+            signer
+          );
+
+          setProvider(provider);
+          setSigner(signer);
+          setContract(contract);
+          setAccount(address);
+
+          // Check if user is registered
+          const registered = await contract.isUserRegistered(address);
+          setIsRegistered(registered);
         } catch (error) {
           console.error("Error reconnecting wallet:", error);
           disconnectWallet();
@@ -187,7 +322,28 @@ export function useWeb3(): Web3HookReturn {
         if (accounts.length === 0) {
           disconnectWallet();
         } else {
-          await connectWallet();
+          try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const address = await signer.getAddress();
+            const contract = new ethers.Contract(
+              CONTRACT_ADDRESS,
+              SocialDApp.abi,
+              signer
+            );
+
+            setProvider(provider);
+            setSigner(signer);
+            setContract(contract);
+            setAccount(address);
+
+            // Check if user is registered
+            const registered = await contract.isUserRegistered(address);
+            setIsRegistered(registered);
+          } catch (error) {
+            console.error("Error handling account change:", error);
+            disconnectWallet();
+          }
         }
       });
 
@@ -216,6 +372,12 @@ export function useWeb3(): Web3HookReturn {
     editPost,
     getAllPosts,
     registerUser,
-    isUsernameAvailable
+    isUsernameAvailable,
+    tipPost,
+    withdrawTips,
+    getPostTips,
+    getUserTips,
+    getAvailableTips
   };
 }
+

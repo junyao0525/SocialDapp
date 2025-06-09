@@ -18,7 +18,7 @@ interface PostData {
 function Page() {
   const [posts, setPosts] = useState<PostData[]>([])
   const [loading, setLoading] = useState(true)
-  const { getAllPosts, account, contract } = useWeb3()
+  const { getAllPosts, account, contract,isRegistered:isUser } = useWeb3()
   const [currentPage, setCurrentPage] = useState(1)
   const postsPerPage = 10
 
@@ -26,8 +26,6 @@ function Page() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`
   }
 
-  useEffect(()=>{console.log(contract);
-  },[contract])
 
   const loadPosts = async () => {
     if (!contract) {
@@ -95,7 +93,16 @@ function Page() {
       <Header />
       <div className="flex justify-center items-center min-h-screen bg-gray-50">
         <div className="w-full max-w-2xl p-4">
-          <SendPost onPostCreated={loadPosts} />
+          <div className="mb-4">
+          </div>
+          {isUser ? <SendPost onPostCreated={loadPosts} /> : 
+          <>
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6 w-full max-w-2xl">
+              <p className="text-center text-gray-600">Please connect your wallet to create posts</p>
+          </div>
+          </>
+        }
+        
           {loading ? (
             <div className="text-center py-8">
               <p className="text-gray-600">Loading posts...</p>
