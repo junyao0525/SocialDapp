@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   env: {
     CONTRACT_ADDRESS: process.env.CONTRACT_ADDRESS,
   },
+  images: {
+    domains: ['gateway.pinata.cloud'],
+  },
 };
 
 export default nextConfig;

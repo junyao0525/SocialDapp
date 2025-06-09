@@ -1,6 +1,7 @@
 "use client"
 
 import { useWeb3 } from "@/hooks/useWeb3"
+import Image from "next/image"
 import { useEffect, useState } from "react"
 import { TipModal } from "./TipModal"
 
@@ -11,9 +12,11 @@ interface PostProps {
   timestamp: string
   isOwner: boolean
   onPostEdited: () => void
+  mediaHash?: string
+  mediaType?: string
 }
 
-export default function Post({ id, author, content, timestamp, isOwner, onPostEdited }: PostProps) {
+export default function Post({ id, author, content, timestamp, isOwner, onPostEdited, mediaHash, mediaType }: PostProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
   const [loading, setLoading] = useState(false)
@@ -54,6 +57,43 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
     setIsEditing(false)
     setEditContent(content)
   }
+
+  const getMediaUrl = () => {
+    if (!mediaHash) return null;
+    const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://gateway.pinata.cloud';
+    return `${gatewayUrl}/ipfs/${mediaHash}`;
+  };
+
+  const renderMedia = () => {
+    const mediaUrl = getMediaUrl();
+    if (!mediaUrl) return null;
+
+    if (mediaType?.startsWith('image/')) {
+      return (
+        <div className="mt-4 relative w-full h-64">
+          <Image
+            src={mediaUrl}
+            alt="Post media"
+            fill
+            className="object-contain rounded-lg"
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-4">
+        <a 
+          href={mediaUrl} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:text-blue-800"
+        >
+          View Media
+        </a>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -122,6 +162,13 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
               disabled={loading}
               rows={4}
             />
+            {mediaHash && (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+                <p className="text-sm">
+                  Note: Media cannot be edited. Only the text content can be modified.
+                </p>
+              </div>
+            )}
             <div className="flex space-x-3">
               <button
                 className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
@@ -152,6 +199,7 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
         ) : (
           <div className="bg-white rounded-xl p-4 border border-slate-200">
             <p className="text-gray-700 whitespace-pre-wrap">{content}</p>
+            {renderMedia()}
           </div>
         )}
       </div>

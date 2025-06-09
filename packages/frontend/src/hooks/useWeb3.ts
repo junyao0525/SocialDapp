@@ -18,9 +18,17 @@ interface Web3HookReturn {
   loading: boolean;
   connectWallet: () => Promise<{ provider: ethers.BrowserProvider; signer: ethers.JsonRpcSigner; contract: ethers.Contract; address: string; registered: boolean }>;
   disconnectWallet: () => void;
-  createPost: (content: string) => Promise<ethers.ContractTransactionResponse>;
+  createPost: (content: string, mediaHash: string, mediaType: string) => Promise<ethers.ContractTransactionResponse>;
   editPost: (postId: string, content: string) => Promise<ethers.ContractTransactionResponse>;
-  getAllPosts: () => Promise<[ethers.BigNumberish[], string[], string[], ethers.BigNumberish[]]>;
+  getAllPosts: () => Promise<[
+    ethers.BigNumberish[], // ids
+    string[], // authors
+    string[], // contents
+    string[], // mediaHashes
+    string[], // mediaTypes
+    ethers.BigNumberish[], // timestamps
+    ethers.BigNumberish[] // totalTippingArray
+  ]>;
   registerUser: (name: string) => Promise<ethers.ContractTransactionResponse>;
   isUsernameAvailable: (username: string) => Promise<boolean>;
   tipPost: (postId: string, amount: string) => Promise<ethers.ContractTransactionResponse>;
@@ -85,13 +93,14 @@ export function useWeb3(): Web3HookReturn {
     Cookies.remove("wallet_connected");
   };
 
-  const createPost = async (content: string) => {
+  const createPost = async (content: string, mediaHash: string = "", mediaType: string = "") => {
     if (!contract) throw new Error("Contract not initialized");
-    if (!account) throw new Error("Pls Register as user first");
+    if (!account) throw new Error("Please connect your wallet first");
+    if (!isRegistered) throw new Error("Please register as user first");
 
     try {
       setLoading(true);
-      const tx = await contract.createPost(content);
+      const tx = await contract.createPost(content, mediaHash, mediaType);
       await tx.wait();
       return tx;
     } catch (error) {

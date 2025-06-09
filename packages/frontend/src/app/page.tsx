@@ -13,6 +13,8 @@ interface PostData {
   content: string
   timestamp: string
   isOwner: boolean
+  mediaHash?: string
+  mediaType?: string
 }
 
 function Page() {
@@ -34,7 +36,7 @@ function Page() {
 
     try {
       setLoading(true)
-      const [ids, authors, contents, timestamps] = await getAllPosts()
+      const [ids, authors, contents, mediaHashes, mediaTypes, timestamps] = await getAllPosts()
       
       if (!contract) return
 
@@ -60,7 +62,9 @@ function Page() {
         author: usernames[index],
         content: contents[index],
         timestamp: new Date(Number(timestamps[index]) * 1000).toLocaleString(),
-        isOwner: authors[index].toLowerCase() === account?.toLowerCase()
+        isOwner: authors[index].toLowerCase() === account?.toLowerCase(),
+        mediaHash: mediaHashes[index] || undefined,
+        mediaType: mediaTypes[index] || undefined
       }))
 
       setPosts(formattedPosts)
@@ -122,6 +126,8 @@ function Page() {
                   timestamp={post.timestamp}
                   isOwner={post.isOwner}
                   onPostEdited={loadPosts}
+                  mediaHash={post.mediaHash}
+                  mediaType={post.mediaType}
                 />
               ))}
               

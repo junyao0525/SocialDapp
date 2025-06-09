@@ -7,6 +7,8 @@ contract SocialDApp {
         address author;
         string content;
         uint256 timestamp;
+        string mediaHash;
+        string mediaType;
         bool exists;
         uint256 totalTipping;
     }
@@ -119,8 +121,8 @@ contract SocialDApp {
     }
     
     // Create a new post
-    function createPost(string memory _content) external onlyRegistered {
-        require(bytes(_content).length > 0, "Post content cannot be empty");
+    function createPost(string memory _content,string memory _mediaHash,string memory _mediaType) external onlyRegistered {
+        require(bytes(_content).length > 0 || bytes(_mediaHash).length > 0, "Post must have content or media");
         require(bytes(_content).length <= 1000, "Post content too long");
         
         totalPosts++;
@@ -129,6 +131,8 @@ contract SocialDApp {
             id: totalPosts,
             author: msg.sender,
             content: _content,
+            mediaHash: _mediaHash,
+            mediaType: _mediaType,
             timestamp: block.timestamp,
             exists: true,
             totalTipping: 0
@@ -179,59 +183,85 @@ contract SocialDApp {
         uint256 id,
         address author,
         string memory content,
+        string memory mediaHash,
+        string memory mediaType,
         uint256 timestamp,
         uint256 totalTipping
     ) {
         require(posts[_postId].exists, "Post does not exist");
         Post storage post = posts[_postId];
-        return (post.id, post.author, post.content, post.timestamp, post.totalTipping);
+        return (post.id, post.author, post.content, post.mediaHash, post.mediaType, post.timestamp, post.totalTipping);
     }
     
     // Get all posts (for feed) - Fixed to handle edge cases
-    function getAllPosts() external view returns (
-        uint256[] memory ids,
-        address[] memory authors,
-        string[] memory contents,
-        uint256[] memory timestamps,
-        uint256[] memory totalTippingArray
-    ) {
-        if (totalPosts == 0) {
-            return (new uint256[](0), new address[](0), new string[](0), new uint256[](0), new uint256[](0));
-        }
-        
-        uint256 validPostCount = 0;
-        
-        // Count valid posts
-        for (uint256 i = 1; i <= totalPosts; i++) {
-            if (posts[i].exists) {
-                validPostCount++;
-            }
-        }
-        
-        if (validPostCount == 0) {
-            return (new uint256[](0), new address[](0), new string[](0), new uint256[](0), new uint256[](0));
-        }
-        
-        // Initialize arrays
-        ids = new uint256[](validPostCount);
-        authors = new address[](validPostCount);
-        contents = new string[](validPostCount);
-        timestamps = new uint256[](validPostCount);
-        totalTippingArray = new uint256[](validPostCount);
-        
-        // Fill arrays with valid posts (reverse order for newest first)
-        uint256 index = 0;
-        for (uint256 i = totalPosts; i >= 1 && index < validPostCount; i--) {
-            if (posts[i].exists) {
-                ids[index] = posts[i].id;
-                authors[index] = posts[i].author;
-                contents[index] = posts[i].content;
-                timestamps[index] = posts[i].timestamp;
-                totalTippingArray[index] = posts[i].totalTipping;
-                index++;
-            }
+function getAllPosts() external view returns (
+    uint256[] memory ids,
+    address[] memory authors,
+    string[] memory contents,
+    string[] memory mediaHashes,
+    string[] memory mediaTypes,
+    uint256[] memory timestamps,
+    uint256[] memory totalTippingArray
+) {
+    if (totalPosts == 0) {
+        return (
+            new uint256[](0),
+            new address[](0),
+            new string[](0),
+            new string[](0),
+            new string[](0),
+            new uint256[](0),
+            new uint256[](0)
+        );
+    }
+
+    uint256 validPostCount = 0;
+
+    // Count valid posts
+    for (uint256 i = 1; i <= totalPosts; i++) {
+        if (posts[i].exists) {
+            validPostCount++;
         }
     }
+
+    if (validPostCount == 0) {
+        return (
+            new uint256[](0),
+            new address[](0),
+            new string[](0),
+            new string[](0),
+            new string[](0),
+            new uint256[](0),
+            new uint256[](0)
+        );
+    }
+
+    // Initialize arrays
+    ids = new uint256[](validPostCount);
+    authors = new address[](validPostCount);
+    contents = new string[](validPostCount);
+    mediaHashes = new string[](validPostCount);
+    mediaTypes = new string[](validPostCount);
+    timestamps = new uint256[](validPostCount);
+    totalTippingArray = new uint256[](validPostCount);
+
+    // Fill arrays
+    uint256 index = 0;
+    for (uint256 i = totalPosts; i >= 1 && index < validPostCount; i--) {
+        if (posts[i].exists) {
+            ids[index] = posts[i].id;
+            authors[index] = posts[i].author;
+            contents[index] = posts[i].content;
+            mediaHashes[index] = posts[i].mediaHash;
+            mediaTypes[index] = posts[i].mediaType;
+            timestamps[index] = posts[i].timestamp;
+            totalTippingArray[index] = posts[i].totalTipping;
+            index++;
+        }
+    }
+}
+
+
     
     // Check if user is registered
     function isUserRegistered(address _user) external view returns (bool) {
