@@ -1,7 +1,7 @@
 "use client"
 
 import { useWeb3 } from "@/hooks/useWeb3"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { TipModal } from "./TipModal"
 
 interface PostProps {
@@ -18,7 +18,14 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
   const [editContent, setEditContent] = useState(content)
   const [loading, setLoading] = useState(false)
   const [isTipModalOpen, setIsTipModalOpen] = useState(false)
+  const [isEdited, setIsEdited] = useState(false)
   const { editPost } = useWeb3()
+
+  // Load edited status from localStorage on component mount
+  useEffect(() => {
+    const editedPosts = JSON.parse(localStorage.getItem('editedPosts') || '{}')
+    setIsEdited(editedPosts[id] || false)
+  }, [id])
 
   const handleEdit = async () => {
     if (!editContent.trim()) return
@@ -28,6 +35,13 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
       const tx = await editPost(id, editContent)
       await tx.wait()
       setIsEditing(false)
+      setIsEdited(true)
+      
+      // Save edited status to localStorage
+      const editedPosts = JSON.parse(localStorage.getItem('editedPosts') || '{}')
+      editedPosts[id] = true
+      localStorage.setItem('editedPosts', JSON.stringify(editedPosts))
+      
       onPostEdited()
     } catch (error) {
       console.error("Error editing post:", error)
@@ -59,7 +73,12 @@ export default function Post({ id, author, content, timestamp, isOwner, onPostEd
                   </span>
                 )}
               </h3>
-              <p className="text-sm text-gray-500">{timestamp}</p>
+              <p className="text-sm text-gray-500 flex items-center space-x-2">
+                <span>{timestamp}</span>
+                {isEdited && (
+                  <span className="text-xs text-gray-400 italic">(edited)</span>
+                )}
+              </p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
