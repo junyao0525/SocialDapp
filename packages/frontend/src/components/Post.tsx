@@ -1,7 +1,7 @@
 "use client"
 
 import { useWeb3 } from "@/hooks/useWeb3"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 interface PostProps {
   id: string
@@ -16,6 +16,8 @@ function Post({ id, author, content, timestamp, isOwner = false, onPostEdited }:
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(content)
   const { editPost, loading } = useWeb3()
+
+  useEffect(() => {console.log(loading)}, [loading])
 
   const handleEdit = async () => {
     if (!editContent.trim()) return

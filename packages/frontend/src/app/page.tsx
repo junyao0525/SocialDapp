@@ -26,13 +26,20 @@ function Page() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`
   }
 
+  useEffect(()=>{console.log(contract);
+  },[contract])
+
   const loadPosts = async () => {
-    if (!contract) return
+    if (!contract) {
+      setLoading(false)
+    }
 
     try {
       setLoading(true)
       const [ids, authors, contents, timestamps] = await getAllPosts()
       
+      if (!contract) return
+
       // Fetch usernames for all authors
       const usernames = await Promise.all(
         authors.map(async (address: string) => {
