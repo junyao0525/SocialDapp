@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { useState } from 'react';
 
 export default function TestUpload() {
@@ -98,11 +99,14 @@ export default function TestUpload() {
           {file?.type.startsWith('image/') && (
             <div className="mt-4">
               <h3 className="font-semibold mb-2">Preview:</h3>
-              <img 
-                src={uploadedUrl} 
-                alt="Uploaded file preview" 
-                className="max-w-full rounded-md"
-              />
+              <div className="relative w-full h-64">
+                <Image 
+                  src={uploadedUrl} 
+                  alt="Uploaded file preview" 
+                  fill
+                  className="object-contain rounded-md"
+                />
+              </div>
             </div>
           )}
         </div>
