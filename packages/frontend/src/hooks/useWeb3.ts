@@ -3,7 +3,11 @@ import { ethers } from "ethers";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 
-const CONTRACT_ADDRESS = "0xeB6f257e1a52ee3f1987b4f12ac9E43FCFC800bf";
+// Contract address - using environment variable with fallback
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || "";
+
+// Log the contract address being used (for debugging)
+console.log('Using contract address:', CONTRACT_ADDRESS);
 
 interface Web3HookReturn {
   provider: ethers.BrowserProvider | null;
