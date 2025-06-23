@@ -20,16 +20,28 @@ interface Web3ContextType {
   }>
   createPost: (content: string) => Promise<ethers.ContractTransactionResponse>
   editPost: (postId: string, content: string) => Promise<ethers.ContractTransactionResponse>
-  getAllPosts: () => Promise<[ethers.BigNumberish[], string[], string[], ethers.BigNumberish[]]>
+  getAllPosts: () => Promise<[
+    ethers.BigNumberish[], // ids
+    string[], // authors
+    string[], // contents
+    string[], // mediaHashes
+    string[], // mediaTypes
+    ethers.BigNumberish[], // timestamps
+    ethers.BigNumberish[] // totalTippingArray
+  ]>
 }
 
 const Web3Context = createContext<Web3ContextType | null>(null)
 
 export function Web3Provider({ children }: { children: ReactNode }) {
   const web3 = useWeb3()
-
+  const adaptedWeb3 = {
+    ...web3,
+    createPost: (content: string) => web3.createPost(content, "", ""),
+    editPost: (postId: string, content: string) => web3.editPost(postId, content),
+  };
   return (
-    <Web3Context.Provider value={web3}>
+    <Web3Context.Provider value={adaptedWeb3 as Web3ContextType}>
       {children}
     </Web3Context.Provider>
   )
