@@ -1,5 +1,6 @@
 import "@nomicfoundation/hardhat-toolbox";
 import "dotenv/config";
+import "hardhat-gas-reporter";
 import { HardhatUserConfig } from "hardhat/config";
 
 if (!process.env.API_URL) throw new Error("API_URL is required");
@@ -16,6 +17,11 @@ const config: HardhatUserConfig = {
       url: process.env.API_URL,
       accounts: [process.env.PRIVATE_KEY]
     }
+  },
+  gasReporter: {
+    enabled: true,
+    currency: "USD",
+    gasPrice: 21,
   },
 };
 
